@@ -21,7 +21,7 @@ from datetime import datetime
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 CSV_FILE       = os.path.join(os.path.dirname(__file__), "..", "simulator", "motor_data.csv")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "PUT_YOUR_API_HERE")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY_HERE")
 MODEL          = "gemini-3.1-flash-lite"
 GEMINI_URL     = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={GEMINI_API_KEY}"
 
