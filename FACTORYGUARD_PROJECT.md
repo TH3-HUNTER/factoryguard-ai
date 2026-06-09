@@ -11,7 +11,7 @@
 
 ## 1. Project Summary
 
-**FactoryGuard AI** is an intelligent real-time monitoring and diagnostic agent for 3-phase industrial motors. It simulates a 400V / 7.5kW / 1450 RPM induction motor, collects live sensor data every second, and uses **Google Gemini 1.5 Flash AI** to perform multi-step engineering diagnosis — detecting faults, identifying root causes, and recommending specific maintenance actions with urgency rankings.
+**FactoryGuard AI** is an intelligent real-time monitoring and diagnostic agent for 3-phase industrial motors. It simulates a 400V / 7.5kW / 1450 RPM induction motor, collects live sensor data every second, and uses **Google Gemini 3.5 Flash AI** to perform multi-step engineering diagnosis — detecting faults, identifying root causes, and recommending specific maintenance actions with urgency rankings.
 
 The project targets predictive maintenance in Industry 4.0 environments. The developer has direct academic and professional expertise: Electrical Engineering degree, Industry 4.0 Master's studies, PFE in predictive maintenance, and resistance welding machine experience.
 
@@ -52,7 +52,7 @@ COMPUTER (local)
     └── Prints complete structured diagnosis
 
 CLOUD (Gemini API)
-└── gemini-1.5-flash
+└── gemini-3.5-flash
     ├── Receives: 12 rows history + trends + pre-detected faults
     ├── Prompt: expert electrical engineer role
     ├── Output: STATUS / WHAT I SEE / ROOT CAUSE / ACTIONS / PREDICTION
@@ -298,7 +298,7 @@ factoryguard/
 |-------|-----------|--------|
 | Simulation | Python 3.10 + Tkinter | Done |
 | Data stream | CSV (1s updates) | Done |
-| AI reasoning | Gemini 1.5 Flash API | Done |
+| AI reasoning | Gemini 3.5 Flash API | Done |
 | Orchestration | Google Cloud Agent Builder | To do |
 | Monitoring | Dynatrace MCP Server | To do |
 | Web UI | Streamlit | To do |
