@@ -11,7 +11,7 @@ import threading
 
 CSV_FILE          = os.path.join(os.path.dirname(__file__), "..", "simulator", "motor_data.csv")
 GEMINI_API_KEY    = "YOUR_GEMINI_API_KEY_HERE"
-MODEL             = "gemini-1.5-flash"
+MODEL             = "gemini-3.5-flash"
 GEMINI_URL        = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={GEMINI_API_KEY}"
 ANALYSIS_COOLDOWN = 30
 HISTORY_SIZE      = 20
