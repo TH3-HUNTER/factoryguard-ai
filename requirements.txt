@@ -1,0 +1,8 @@
+# FactoryGuard AI — Python dependencies
+# tkinter is included with Python 3.10 (no install needed)
+# All other libraries used are Python standard library only:
+# csv, time, os, json, urllib, datetime, threading, math, random
+
+# Web dashboard dependencies
+streamlit>=1.32.0
+pandas>=2.0.0
