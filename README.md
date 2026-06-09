@@ -47,7 +47,7 @@ Motor Simulator (Python + Tkinter)
          ▼
   AI Agent (Python)
   ├── Rule Engine (15 fault conditions)
-  └── Google Gemini 1.5 Flash API
+  └── Google Gemini 3.1 Flash Lite API
             │
             ▼
   Engineering Diagnosis
@@ -74,7 +74,7 @@ All sensor values use real electrical engineering equations:
 | Layer | Technology |
 |-------|-----------|
 | Simulation | Python 3.10 + Tkinter |
-| AI Reasoning | Google Gemini 1.5 Flash |
+| AI Reasoning | Google Gemini 3.1 Flash lite |
 | Orchestration | Google Cloud Agent Builder |
 | Monitoring | Dynatrace MCP Server |
 | Web Dashboard | Streamlit |
