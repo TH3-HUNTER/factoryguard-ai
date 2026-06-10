@@ -464,8 +464,204 @@ def main():
         """)
 
     # Auto-refresh
+    render_agent_chat(df)
     time.sleep(REFRESH_RATE)
     st.rerun()
+
+# ═══════════════════════════════════════════════════════════════════
+# FACTORYGUARD AGENT CHAT — fetches from Dynatrace + Gemini analysis
+# ═══════════════════════════════════════════════════════════════════
+
+def fetch_dynatrace_metrics():
+    """Fetch the latest motor metrics from Dynatrace Metrics API v2."""
+    metrics_to_fetch = [
+        "factoryguard.motor.voltage_v",
+        "factoryguard.motor.current_a",
+        "factoryguard.motor.temperature_c",
+        "factoryguard.motor.vibration_mm_s",
+        "factoryguard.motor.rpm",
+        "factoryguard.motor.power_kw",
+        "factoryguard.motor.fault_count",
+        "factoryguard.motor.severity",
+    ]
+    selector = ",".join(metrics_to_fetch)
+    url = f"{DT_URL}/api/v2/metrics/query?metricSelector={selector}&resolution=1m&from=now-5m"
+
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"Authorization": f"Api-Token {DT_TOKEN}"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+
+        results = {}
+        for item in data.get("resolution", {}) and data.get("result", []):
+            metric_id = item.get("metricId", "")
+            series    = item.get("data", [])
+            if series:
+                values = [v for v in series[0].get("values", []) if v is not None]
+                if values:
+                    short_name = metric_id.split(".")[-1]  # e.g. voltage_v
+                    results[short_name] = round(values[-1], 3)
+
+        return results if results else None
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def agent_ask_gemini(user_question: str, dt_data: dict, motor_df) -> str:
+    """Send user question + Dynatrace context + CSV context to Gemini."""
+
+    # Build Dynatrace context string
+    if dt_data and "error" not in dt_data:
+        dt_context = "LIVE DATA FROM DYNATRACE (last 5 minutes):\n"
+        label_map = {
+            "voltage_v": "Voltage",
+            "current_a": "Current",
+            "temperature_c": "Temperature",
+            "vibration_mm_s": "Vibration",
+            "rpm": "RPM",
+            "power_kw": "Power",
+            "fault_count": "Active Faults",
+            "severity": "Severity Level (0=OK 1=WARN 2=CRIT)",
+        }
+        for k, v in dt_data.items():
+            label = label_map.get(k, k)
+            dt_context += f"  {label}: {v}\n"
+    elif dt_data and "error" in dt_data:
+        dt_context = f"Dynatrace query failed: {dt_data['error']}. Using local CSV data instead.\n"
+    else:
+        dt_context = "Dynatrace returned no data. Using local CSV data.\n"
+
+    # Build CSV context (last 3 rows summary)
+    csv_context = ""
+    if motor_df is not None and not motor_df.empty:
+        last = motor_df.iloc[-1]
+        csv_context = (
+            f"\nLOCAL SENSOR DATA (latest reading):\n"
+            f"  Voltage: {last.get('voltage_v','N/A')} V\n"
+            f"  Current: {last.get('current_a','N/A')} A\n"
+            f"  Temperature: {last.get('temperature_c','N/A')} C\n"
+            f"  Vibration: {last.get('vibration_mm_s','N/A')} mm/s\n"
+            f"  RPM: {last.get('rpm','N/A')}\n"
+            f"  Status: {last.get('status','N/A')}\n"
+        )
+
+    system_text = (
+        "You are FactoryGuard AI, a senior industrial motor diagnostic agent. "
+        "You monitor a 400V / 7.5kW / 1450 RPM 3-phase induction motor in a factory. "
+        "You have access to real-time data from Dynatrace monitoring and local sensors. "
+        "Normal ranges: voltage 380-420V, current below 15.2A, temperature below 80C, vibration below 4.5 mm/s. "
+        "Always answer as a professional maintenance engineer: cite the exact sensor values, "
+        "explain root causes using motor physics, and give specific recommended actions. "
+        "Be concise and direct. Use plain text, no markdown symbols."
+    )
+
+    full_prompt = (
+        f"{dt_context}"
+        f"{csv_context}\n"
+        f"Engineer question: {user_question}"
+    )
+
+    try:
+        payload = json.dumps({
+            "system_instruction": {"parts": [{"text": system_text}]},
+            "contents": [{"role": "user", "parts": [{"text": full_prompt}]}],
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 600}
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            GEMINI_URL, data=payload,
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            data = json.loads(resp.read().decode())
+            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        if e.code == 429:
+            return "Rate limit reached — wait 60 seconds and try again."
+        return f"Gemini error {e.code}: {body[:200]}"
+    except Exception as e:
+        return f"Agent error: {e}"
+
+
+def render_agent_chat(df):
+    st.markdown("---")
+    st.markdown("## 🤖 FactoryGuard Agent")
+    st.markdown(
+        "<span style='color:#555;font-size:0.82rem'>"
+        "Agent fetches live data from Dynatrace · powered by Gemini AI"
+        "</span>",
+        unsafe_allow_html=True
+    )
+
+    # Init session state for chat
+    if "agent_messages" not in st.session_state:
+        st.session_state.agent_messages = []
+
+    # Display chat history
+    for msg in st.session_state.agent_messages:
+        role_color = "#00d4ff" if msg["role"] == "user" else "#00ff88"
+        role_label = "You" if msg["role"] == "user" else "FactoryGuard Agent"
+        st.markdown(
+            f"<div style='margin:8px 0;padding:12px 16px;"
+            f"background:{"#1a1f35" if msg["role"]=="user" else "#0d2b1a"};"
+            f"border-radius:10px;border-left:3px solid {role_color}'>"
+            f"<div style='color:{role_color};font-size:0.75rem;font-weight:700;"
+            f"margin-bottom:6px'>{role_label}</div>"
+            f"<div style='color:#ccc;font-size:0.9rem;white-space:pre-wrap'>{msg['content']}</div>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+
+    # Suggested questions (only shown when chat is empty)
+    if not st.session_state.agent_messages:
+        st.markdown("<div style='color:#555;font-size:0.8rem;margin-bottom:8px'>Try asking:</div>", unsafe_allow_html=True)
+        suggestions = [
+            "What is the current motor status from Dynatrace?",
+            "Is the temperature dangerous right now?",
+            "Why is the current high?",
+            "How many faults are active?",
+        ]
+        cols = st.columns(len(suggestions))
+        for i, suggestion in enumerate(suggestions):
+            with cols[i]:
+                if st.button(suggestion, key=f"suggest_{i}", use_container_width=True):
+                    st.session_state._agent_pending = suggestion
+                    st.rerun()
+
+    # Handle suggested question click
+    pending = st.session_state.pop("_agent_pending", None)
+
+    # Chat input
+    user_input = st.chat_input("Ask the agent about motor health, faults, or Dynatrace data...")
+
+    question = pending or user_input
+
+    if question:
+        # Add user message
+        st.session_state.agent_messages.append({"role": "user", "content": question})
+
+        # Fetch Dynatrace + call Gemini
+        with st.spinner("Agent fetching Dynatrace data and analysing..."):
+            dt_data  = fetch_dynatrace_metrics()
+            response = agent_ask_gemini(question, dt_data, df)
+
+        # Add agent response
+        st.session_state.agent_messages.append({"role": "assistant", "content": response})
+        st.rerun()
+
+    # Clear button
+    if st.session_state.agent_messages:
+        if st.button("🗑 Clear chat", key="clear_agent_chat"):
+            st.session_state.agent_messages = []
+            st.rerun()
+
+
 
 if __name__ == "__main__":
     main()
