@@ -469,3 +469,55 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# ── CLOUD RUN LIVE DATA GENERATOR ─────────────────────────────────────────────
+# When running on Cloud Run (no local simulator), regenerate CSV every refresh
+# so the dashboard shows changing values instead of static data
+import math as _math
+
+def regenerate_live_data():
+    """Generate fresh 120 rows ending at NOW so values change on every refresh."""
+    import random, csv
+    from datetime import datetime, timedelta
+    t = datetime.now() - timedelta(seconds=120)
+    rows = []
+    seed = int(datetime.now().timestamp()) // 30  # changes every 30s
+    random.seed(seed)
+
+    for i in range(120):
+        load = 0.70 + random.uniform(-0.03, 0.03)
+        if i < 60:
+            volt = 400 + random.uniform(-5, 5)
+            bvib, btemp, status = 0, 0, "NORMAL"
+        elif i < 90:
+            volt = 400 + random.uniform(-5, 5)
+            sev = (i - 60) / 30.0
+            bvib = sev * 8.5 + 2 * _math.sin(i * 3.2) * sev
+            btemp = sev * 12
+            status = "WARNING_BEARING_FAULT" if sev > 0.3 else "NORMAL"
+        else:
+            volt = 340 + random.uniform(-6, 6)
+            bvib, btemp = 0, 0
+            status = "WARNING_LOW_VOLTAGE"
+
+        curr = (7500 * load / 0.91) / (1.732 * volt * 0.85) * (400 / volt) + random.uniform(-0.2, 0.2)
+        temp = 25 + (50 / 15.2**2) * curr**2 + btemp + random.uniform(-0.5, 0.5)
+        rpm  = 1450 * (1 - 0.05 * load) * (0.93 if bvib > 3 else 1.0) + random.uniform(-8, 8)
+        vib  = max(0, 0.5 + 1.8 * load + bvib + random.uniform(-0.05, 0.05))
+        pw   = round((1.732 * volt * curr * 0.85) / 1000, 3)
+        if temp > 100: status = "CRITICAL_OVERTEMPERATURE"
+        elif curr > 20: status = "CRITICAL_OVERCURRENT"
+        rows.append([t.strftime('%Y-%m-%d %H:%M:%S'), round(rpm,1), round(temp,1),
+                     round(vib,3), round(curr,2), round(volt,1), pw, status])
+        t += timedelta(seconds=1)
+
+    os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
+    with open(CSV_FILE, 'w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(['timestamp','rpm','temperature_c','vibration_mm_s','current_a','voltage_v','power_kw','status'])
+        w.writerows(rows)
+
+# Call on every Streamlit rerun when running on Cloud Run (no local simulator present)
+_is_cloud = os.environ.get("K_SERVICE") is not None   # Cloud Run sets K_SERVICE
+if _is_cloud:
+    regenerate_live_data()
