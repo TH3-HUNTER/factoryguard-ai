@@ -27,6 +27,7 @@ GEMINI_URL     = f"https://generativelanguage.googleapis.com/v1beta/models/{MODE
 
 DT_URL         = os.environ.get("DT_URL",   "https://ywo70142.live.dynatrace.com")
 DT_TOKEN       = os.environ.get("DT_TOKEN", "token_here")
+DT_PLATFORM_TOKEN = os.environ.get("DT_PLATFORM_TOKEN", "") 
 
 REFRESH_RATE   = 2
 ANALYSIS_EVERY = 30
@@ -490,7 +491,7 @@ def fetch_dynatrace_metrics():
     try:
         req = urllib.request.Request(
             url,
-            headers={"Authorization": f"Api-Token {DT_TOKEN}"}
+            headers={"Authorization": f"Api-Token {DT_PLATFORM_TOKEN or DT_TOKEN}"}
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode())
