@@ -21,12 +21,12 @@ from datetime import datetime
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 CSV_FILE       = os.path.join(os.path.dirname(__file__), "..", "simulator", "motor_data.csv")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6JtJVHhlQp6pWNqzsgZdiqZ9jK3yUzUwfm-wDH1vrL_dg")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "token_here")
 MODEL          = "gemini-3.1-flash-lite"
 GEMINI_URL     = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={GEMINI_API_KEY}"
 
 DT_URL         = os.environ.get("DT_URL",   "https://ywo70142.live.dynatrace.com")
-DT_TOKEN       = os.environ.get("DT_TOKEN", "dt0c01.DLDZLWWDS24TMMKNIIT3SZ5H.44T57J57ALTS5HEYXNBOD57G6MA3OXELVM3PO5NHA74CJWI6S4V4YXEAMNLEVPDL")
+DT_TOKEN       = os.environ.get("DT_TOKEN", "token_here")
 
 REFRESH_RATE   = 2
 ANALYSIS_EVERY = 30
