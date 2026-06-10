@@ -651,6 +651,7 @@ def render_agent_chat(df):
         # Fetch Dynatrace + call Gemini
         with st.spinner("Agent fetching Dynatrace data and analysing..."):
             dt_data  = fetch_dynatrace_metrics()
+            st.caption(f"🔍 Dynatrace fetch result: {dt_data}")
             response = agent_ask_gemini(question, dt_data, df)
 
         # Add agent response
@@ -661,6 +662,7 @@ def render_agent_chat(df):
     if st.session_state.agent_messages:
         if st.button("🗑 Clear chat", key="clear_agent_chat"):
             st.session_state.agent_messages = []
+            st.session_state.pop("_agent_pending", None)
             st.rerun()
 
 
