@@ -606,16 +606,17 @@ def render_agent_chat(df):
 
     # Display chat history
     for msg in st.session_state.agent_messages:
-        role_color = "#00d4ff" if msg["role"] == "user" else "#00ff88"
-        role_label = "You" if msg["role"] == "user" else "FactoryGuard Agent"
-        st.markdown(
+         role_color = "#00d4ff" if msg["role"] == "user" else "#00ff88"
+         role_label = "You" if msg["role"] == "user" else "FactoryGuard Agent"
+         bg_color = "#1a1f35" if msg["role"] == "user" else "#0d2b1a"
+         st.markdown(
             f"<div style='margin:8px 0;padding:12px 16px;"
-            f"background:{"#1a1f35" if msg["role"]=="user" else "#0d2b1a"};"
+            f"background:{bg_color};"
             f"border-radius:10px;border-left:3px solid {role_color}'>"
             f"<div style='color:{role_color};font-size:0.75rem;font-weight:700;"
             f"margin-bottom:6px'>{role_label}</div>"
             f"<div style='color:#ccc;font-size:0.9rem;white-space:pre-wrap'>{msg['content']}</div>"
-            f"</div>";
+            f"</div>",
             unsafe_allow_html=True
         )
 
