@@ -20,7 +20,7 @@ MODEL             = "gemini-3.1-flash-lite"
 GEMINI_URL        = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={GEMINI_API_KEY}"
 
 DT_URL            = os.environ.get("DT_URL",   "https://ywo70142.live.dynatrace.com")
-DT_TOKEN          = os.environ.get("DT_TOKEN", "dt0c01.DLDZLWWDS24TMMKNIIT3SZ5H.44T57J57ALTS5HEYXNBOD57G6MA3OXELVM3PO5NHA74CJWI6S4V4YXEAMNLEVPDL")
+DT_TOKEN          = os.environ.get("DT_TOKEN", "YOUR_DT_TOKEN")
 
 ANALYSIS_COOLDOWN = 30
 HISTORY_SIZE      = 20
