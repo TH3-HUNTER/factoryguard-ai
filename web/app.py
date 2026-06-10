@@ -309,6 +309,30 @@ def render_diagnosis(text, status):
     html += "</div>"
     return html
 
+def render_simulator_controls():
+    """Online motor simulator controls in the sidebar."""
+    st.sidebar.markdown("## ⚙ Motor Simulator")
+    st.sidebar.markdown("<div style='color:#555;font-size:0.78rem'>Control the motor live</div>", unsafe_allow_html=True)
+
+    # Init defaults
+    for k, v in [
+        ("sim_load", 70), ("sim_voltage", 400), ("sim_rpm_set", 1450),
+        ("sim_bearing", False), ("sim_overtemp", False),
+        ("sim_overcurrent", False),
+    ]:
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+    st.session_state.sim_load       = st.sidebar.slider("Load (%)", 0, 100, st.session_state.sim_load)
+    st.session_state.sim_voltage    = st.sidebar.slider("Supply Voltage (V)", 280, 440, st.session_state.sim_voltage)
+    st.session_state.sim_rpm_set    = st.sidebar.slider("RPM Setpoint", 0, 1500, st.session_state.sim_rpm_set)
+
+    st.sidebar.markdown("**Fault Injection**")
+    st.session_state.sim_bearing    = st.sidebar.checkbox("🔴 Bearing Fault",   st.session_state.sim_bearing)
+    st.session_state.sim_overtemp   = st.sidebar.checkbox("🔴 Overtemperature", st.session_state.sim_overtemp)
+    st.session_state.sim_overcurrent= st.sidebar.checkbox("🔴 Overcurrent",     st.session_state.sim_overcurrent)
+    
+
 # ── CLOUD RUN LIVE DATA GENERATOR ─────────────────────────────────────────────
 # When running on Cloud Run (no local simulator), regenerate CSV every refresh
 # so the dashboard shows changing values instead of static data
@@ -387,32 +411,12 @@ def regenerate_live_data():
                     'current_a','voltage_v','power_kw','status'])
         w.writerows(rows)
 
-def render_simulator_controls():
-    """Online motor simulator controls in the sidebar."""
-    st.sidebar.markdown("## ⚙ Motor Simulator")
-    st.sidebar.markdown("<div style='color:#555;font-size:0.78rem'>Control the motor live</div>", unsafe_allow_html=True)
 
-    # Init defaults
-    for k, v in [
-        ("sim_load", 70), ("sim_voltage", 400), ("sim_rpm_set", 1450),
-        ("sim_bearing", False), ("sim_overtemp", False),
-        ("sim_overcurrent", False),
-    ]:
-        if k not in st.session_state:
-            st.session_state[k] = v
-
-    st.session_state.sim_load       = st.sidebar.slider("Load (%)", 0, 100, st.session_state.sim_load)
-    st.session_state.sim_voltage    = st.sidebar.slider("Supply Voltage (V)", 280, 440, st.session_state.sim_voltage)
-    st.session_state.sim_rpm_set    = st.sidebar.slider("RPM Setpoint", 0, 1500, st.session_state.sim_rpm_set)
-
-    st.sidebar.markdown("**Fault Injection**")
-    st.session_state.sim_bearing    = st.sidebar.checkbox("🔴 Bearing Fault",   st.session_state.sim_bearing)
-    st.session_state.sim_overtemp   = st.sidebar.checkbox("🔴 Overtemperature", st.session_state.sim_overtemp)
-    st.session_state.sim_overcurrent= st.sidebar.checkbox("🔴 Overcurrent",     st.session_state.sim_overcurrent)
     
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 def main():
     render_simulator_controls()
+    regenerate_live_data()
     st.markdown("# ⚙ FactoryGuard AI")
     st.markdown("`3-Phase 400V Industrial Motor  |  Real-Time Predictive Maintenance  |  Gemini 3.5 Flash  +  Dynatrace`")
     st.markdown("---")
@@ -778,5 +782,3 @@ _is_cloud = os.environ.get("K_SERVICE") is not None
 if _is_cloud:
     regenerate_live_data()
 
-# TO this (always regenerate, simulator or cloud):
-regenerate_live_data()
