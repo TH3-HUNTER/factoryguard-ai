@@ -615,7 +615,7 @@ def render_agent_chat(df):
             f"<div style='color:{role_color};font-size:0.75rem;font-weight:700;"
             f"margin-bottom:6px'>{role_label}</div>"
             f"<div style='color:#ccc;font-size:0.9rem;white-space:pre-wrap'>{msg['content']}</div>"
-            f"</div>",
+            f"</div>";
             unsafe_allow_html=True
         )
 
