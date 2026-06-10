@@ -311,6 +311,7 @@ def render_diagnosis(text, status):
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 def main():
+    render_simulator_controls()
     st.markdown("# ⚙ FactoryGuard AI")
     st.markdown("`3-Phase 400V Industrial Motor  |  Real-Time Predictive Maintenance  |  Gemini 3.5 Flash  +  Dynatrace`")
     st.markdown("---")
@@ -676,48 +677,106 @@ if __name__ == "__main__":
 import math as _math
 
 def regenerate_live_data():
-    """Generate fresh 120 rows ending at NOW so values change on every refresh."""
+    """Generate live CSV data from sidebar simulator controls."""
     import random, csv
     from datetime import datetime, timedelta
-    t = datetime.now() - timedelta(seconds=120)
+
+    # Read controls (with fallbacks for first run)
+    load        = st.session_state.get("sim_load", 70) / 100.0
+    volt_set    = st.session_state.get("sim_voltage", 400)
+    rpm_set     = st.session_state.get("sim_rpm_set", 1450)
+    bearing     = st.session_state.get("sim_bearing", False)
+    overtemp    = st.session_state.get("sim_overtemp", False)
+    overcurrent = st.session_state.get("sim_overcurrent", False)
+
+    t    = datetime.now() - timedelta(seconds=60)
     rows = []
-    seed = int(datetime.now().timestamp()) // 30  # changes every 30s
-    random.seed(seed)
 
-    for i in range(120):
-        load = 0.70 + random.uniform(-0.03, 0.03)
-        if i < 60:
-            volt = 400 + random.uniform(-5, 5)
-            bvib, btemp, status = 0, 0, "NORMAL"
-        elif i < 90:
-            volt = 400 + random.uniform(-5, 5)
-            sev = (i - 60) / 30.0
-            bvib = sev * 8.5 + 2 * _math.sin(i * 3.2) * sev
-            btemp = sev * 12
-            status = "WARNING_BEARING_FAULT" if sev > 0.3 else "NORMAL"
-        else:
-            volt = 340 + random.uniform(-6, 6)
-            bvib, btemp = 0, 0
-            status = "WARNING_LOW_VOLTAGE"
+    for i in range(60):
+        volt = volt_set + random.uniform(-3, 3)
 
-        curr = (7500 * load / 0.91) / (1.732 * volt * 0.85) * (400 / volt) + random.uniform(-0.2, 0.2)
-        temp = 25 + (50 / 15.2**2) * curr**2 + btemp + random.uniform(-0.5, 0.5)
-        rpm  = 1450 * (1 - 0.05 * load) * (0.93 if bvib > 3 else 1.0) + random.uniform(-8, 8)
-        vib  = max(0, 0.5 + 1.8 * load + bvib + random.uniform(-0.05, 0.05))
-        pw   = round((1.732 * volt * curr * 0.85) / 1000, 3)
-        if temp > 100: status = "CRITICAL_OVERTEMPERATURE"
-        elif curr > 20: status = "CRITICAL_OVERCURRENT"
-        rows.append([t.strftime('%Y-%m-%d %H:%M:%S'), round(rpm,1), round(temp,1),
-                     round(vib,3), round(curr,2), round(volt,1), pw, status])
+        # Real motor physics
+        curr = (7500 * load / 0.91) / (1.732 * volt * 0.85) * (400 / volt)
+        curr += random.uniform(-0.1, 0.1)
+
+        rpm  = rpm_set * (1 - 0.05 * load)
+        temp = 25 + (50 / 15.2**2) * curr**2
+
+        vib  = 0.5 + 1.8 * load
+        if volt < 360:
+            vib += (360 - volt) / 60
+
+        # Fault injections
+        if bearing:
+            import math
+            rpm  *= 0.93
+            vib  += 8.5 + math.sin(i * 3.2)
+            temp += 12
+
+        if overtemp:
+            temp += 35
+
+        if overcurrent:
+            curr *= 1.45
+
+        # Add noise
+        volt += random.uniform(-2, 2)
+        curr += random.uniform(-0.1, 0.1)
+        temp += random.uniform(-0.3, 0.3)
+        vib   = max(0, vib + random.uniform(-0.05, 0.05))
+        rpm  += random.uniform(-5, 5)
+
+        power_kw = round((1.732 * volt * curr * 0.85) / 1000, 3)
+
+        # Status
+        status = "NORMAL"
+        if curr > 22 or temp > 100: status = "CRITICAL_OVERCURRENT" if curr > 22 else "CRITICAL_OVERTEMPERATURE"
+        elif bearing:               status = "WARNING_BEARING_FAULT"
+        elif volt < 360:            status = "WARNING_LOW_VOLTAGE"
+        elif temp > 80:             status = "WARNING_HIGH_TEMP"
+
+        rows.append([
+            t.strftime('%Y-%m-%d %H:%M:%S'),
+            round(rpm, 1), round(temp, 1), round(vib, 3),
+            round(curr, 2), round(volt, 1), power_kw, status
+        ])
         t += timedelta(seconds=1)
 
     os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
     with open(CSV_FILE, 'w', newline='') as f:
         w = csv.writer(f)
-        w.writerow(['timestamp','rpm','temperature_c','vibration_mm_s','current_a','voltage_v','power_kw','status'])
+        w.writerow(['timestamp','rpm','temperature_c','vibration_mm_s',
+                    'current_a','voltage_v','power_kw','status'])
         w.writerows(rows)
 
+def render_simulator_controls():
+    """Online motor simulator controls in the sidebar."""
+    st.sidebar.markdown("## ⚙ Motor Simulator")
+    st.sidebar.markdown("<div style='color:#555;font-size:0.78rem'>Control the motor live</div>", unsafe_allow_html=True)
+
+    # Init defaults
+    for k, v in [
+        ("sim_load", 70), ("sim_voltage", 400), ("sim_rpm_set", 1450),
+        ("sim_bearing", False), ("sim_overtemp", False),
+        ("sim_overcurrent", False),
+    ]:
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+    st.session_state.sim_load       = st.sidebar.slider("Load (%)", 0, 100, st.session_state.sim_load)
+    st.session_state.sim_voltage    = st.sidebar.slider("Supply Voltage (V)", 280, 440, st.session_state.sim_voltage)
+    st.session_state.sim_rpm_set    = st.sidebar.slider("RPM Setpoint", 0, 1500, st.session_state.sim_rpm_set)
+
+    st.sidebar.markdown("**Fault Injection**")
+    st.session_state.sim_bearing    = st.sidebar.checkbox("🔴 Bearing Fault",   st.session_state.sim_bearing)
+    st.session_state.sim_overtemp   = st.sidebar.checkbox("🔴 Overtemperature", st.session_state.sim_overtemp)
+    st.session_state.sim_overcurrent= st.sidebar.checkbox("🔴 Overcurrent",     st.session_state.sim_overcurrent)
+    
 # Call on every Streamlit rerun when running on Cloud Run (no local simulator present)
-_is_cloud = os.environ.get("K_SERVICE") is not None   # Cloud Run sets K_SERVICE
+# At the bottom of app.py, change this:
+_is_cloud = os.environ.get("K_SERVICE") is not None
 if _is_cloud:
     regenerate_live_data()
+
+# TO this (always regenerate, simulator or cloud):
+regenerate_live_data()
