@@ -7,12 +7,10 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 import uvicorn
 
-DT_PLATFORM_TOKEN = os.environ.get("DT_PLATFORM_TOKEN")
+DT_PLATFORM_TOKEN = os.environ.get("token_here")
 DYNA_APP_BASE = os.environ.get("DYNA_APP_BASE", "https://ywo70142.apps.dynatrace.com")
 
 app = FastAPI(title="FactoryGuard Dynatrace Agent")
-
-# Connect to Dynatrace MCP server using your Platform Token
 dynatrace_tools = MCPToolset(
     connection_params=StreamableHTTPConnectionParams(
         url=f"{DYNA_APP_BASE}/platform-reserved/mcp-gateway/v0.1/servers/dynatrace-mcp/mcp",
