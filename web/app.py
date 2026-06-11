@@ -1,15 +1,3 @@
-
-"""
-FactoryGuard AI — Streamlit Web Dashboard v3
-Changes from v2:
-- Dynatrace metrics push (every refresh cycle)
-- Dynatrace event push on fault detection
-- Dynatrace status badge in sidebar
-- Model string corrected to gemini-3.5-flash
-- Subtitle corrected
-- API key via env var with fallback hardcode
-"""
-
 import streamlit as st
 import pandas as pd
 import time
@@ -19,7 +7,7 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 
-# ─── CONFIG ───────────────────────────────────────────────────────────────────
+#CONFIG 
 CSV_FILE       = os.path.join(os.path.dirname(__file__), "..", "simulator", "motor_data.csv")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "token_here")
 MODEL          = "gemini-3.1-flash-lite"
@@ -27,13 +15,12 @@ GEMINI_URL     = f"https://generativelanguage.googleapis.com/v1beta/models/{MODE
 
 DT_URL         = os.environ.get("DT_URL",   "https://ywo70142.live.dynatrace.com")
 DT_TOKEN       = os.environ.get("DT_TOKEN", "token_here")
-DT_PLATFORM_TOKEN = os.environ.get("DT_PLATFORM_TOKEN", "") 
+DT_PLATFORM_TOKEN = os.environ.get("token_here", "") 
 
 REFRESH_RATE   = 2
 ANALYSIS_EVERY = 30
 HISTORY_ROWS   = 60
 MIN_ROWS       = 10
-# ──────────────────────────────────────────────────────────────────────────────
 
 st.set_page_config(page_title="FactoryGuard AI", page_icon="⚙", layout="wide")
 
@@ -68,7 +55,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ─── SESSION STATE ────────────────────────────────────────────────────────────
+# SESSION STATE 
 for key, default in [
     ("last_analysis", ""),
     ("last_analysis_time", 0.0),
@@ -81,7 +68,7 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
-# ─── DATA HELPERS ─────────────────────────────────────────────────────────────
+# DATA HELPERS
 def read_csv(n=HISTORY_ROWS):
     try:
         df = pd.read_csv(CSV_FILE)
@@ -151,7 +138,7 @@ def get_metric_color(key, val):
         if condition: return color
     return "#00ff88"
 
-# ─── DYNATRACE INTEGRATION ────────────────────────────────────────────────────
+# DYNATRACE INTEGRATION 
 def push_metrics_to_dynatrace(volt, curr, temp, vib, rpm, power_kw, fault_count, status):
     """Push motor metrics to Dynatrace via Metrics Ingest API v2."""
     severity = 2 if "CRITICAL" in status else (1 if "WARNING" in status else 0)
@@ -175,7 +162,7 @@ def push_metrics_to_dynatrace(volt, curr, temp, vib, rpm, power_kw, fault_count,
             }
         )
         with urllib.request.urlopen(req, timeout=8) as resp:
-            return resp.status  # 202 = accepted
+            return resp.status  
     except Exception as e:
         return f"error: {e}"
 
@@ -189,7 +176,7 @@ def push_event_to_dynatrace(fault_list, status, curr, temp, vib):
         "INFO"
     )
     if dt_severity == "INFO":
-        return  # Only push events for actual problems
+        return  
 
     event_body = {
         "eventType": "CUSTOM_ALERT",
@@ -215,9 +202,9 @@ def push_event_to_dynatrace(fault_list, status, curr, temp, vib):
         with urllib.request.urlopen(req, timeout=8) as resp:
             return resp.status
     except Exception:
-        pass  # Non-critical — don't break the dashboard
+        pass 
 
-# ─── GEMINI CALL ─────────────────────────────────────────────────────────────
+# GEMINI CALL 
 def call_gemini(df, faults):
     rows  = df.to_dict("records")
     rpms  = df["rpm"].astype(float).tolist()
@@ -282,7 +269,7 @@ RISK ASSESSMENT: one sentence with time to failure, shutdown recommendation, saf
     except Exception as e:
         return f"Connection error: {e}"
 
-# ─── AI DIAGNOSIS RENDERER ────────────────────────────────────────────────────
+# AI DIAGNOSIS RENDERER
 def render_diagnosis(text, status):
     if not text:
         return "<div class='ai-box' style='color:#555;text-align:center;padding-top:60px'>Waiting for first analysis — this takes up to 30 seconds after the simulator starts.</div>"
@@ -333,9 +320,6 @@ def render_simulator_controls():
     st.session_state.sim_overcurrent= st.sidebar.checkbox("🔴 Overcurrent",     st.session_state.sim_overcurrent)
     
 
-# ── CLOUD RUN LIVE DATA GENERATOR ─────────────────────────────────────────────
-# When running on Cloud Run (no local simulator), regenerate CSV every refresh
-# so the dashboard shows changing values instead of static data
 import math as _math
 
 def regenerate_live_data():
@@ -413,7 +397,7 @@ def regenerate_live_data():
 
 
     
-# ─── MAIN ─────────────────────────────────────────────────────────────────────
+# MAIN 
 def main():
     render_simulator_controls()
     regenerate_live_data()
@@ -442,7 +426,7 @@ def main():
     sclass = "status-critical" if "CRITICAL" in status else ("status-warning" if "WARNING" in status else "status-healthy")
     ftags  = "".join(f"<span class='fault-tag'>{f}</span>" for f in faults) or "<span style='color:#00ff88'>All parameters normal</span>"
 
-    # ── Push metrics to Dynatrace (every 10s max to avoid hammering free tier)
+    # Push metrics to Dynatrace
     now = time.time()
     if now - st.session_state.dt_last_push >= 10:
         dt_result = push_metrics_to_dynatrace(volt, curr, temp, vib, rpm, power_kw, len(faults), status)
@@ -501,7 +485,7 @@ def main():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # AI + Dynatrace columns
+
     ai_col, spec_col = st.columns([3, 1])
 
     elapsed = now - st.session_state.last_analysis_time
@@ -534,7 +518,7 @@ def main():
         st.markdown(render_diagnosis(st.session_state.last_analysis, status), unsafe_allow_html=True)
 
     with spec_col:
-        # Dynatrace status badge
+
         dt_status = st.session_state.dt_last_status or "Pending..."
         dt_count  = st.session_state.dt_push_count
         st.markdown(f"""
@@ -575,9 +559,6 @@ def main():
     time.sleep(REFRESH_RATE)
     st.rerun()
 
-# ═══════════════════════════════════════════════════════════════════
-# FACTORYGUARD AGENT CHAT — fetches from Dynatrace + Gemini analysis
-# ═══════════════════════════════════════════════════════════════════
 
 def fetch_dynatrace_metrics():
     """Fetch the latest motor metrics from Dynatrace Metrics API v2."""
@@ -621,7 +602,6 @@ def fetch_dynatrace_metrics():
 def agent_ask_gemini(user_question: str, dt_data: dict, motor_df) -> str:
     """Send user question + Dynatrace context + CSV context to Gemini."""
 
-    # Build Dynatrace context string
     if dt_data and "error" not in dt_data:
         dt_context = "LIVE DATA FROM DYNATRACE (last 5 minutes):\n"
         label_map = {
@@ -642,7 +622,6 @@ def agent_ask_gemini(user_question: str, dt_data: dict, motor_df) -> str:
     else:
         dt_context = "Dynatrace returned no data. Using local CSV data.\n"
 
-    # Build CSV context (last 3 rows summary)
     csv_context = ""
     if motor_df is not None and not motor_df.empty:
         last = motor_df.iloc[-1]
@@ -695,7 +674,6 @@ def agent_ask_gemini(user_question: str, dt_data: dict, motor_df) -> str:
     except Exception as e:
         return f"Agent error: {e}"
 
-
 def render_agent_chat(df):
     st.markdown("---")
     st.markdown("## 🤖 FactoryGuard Agent")
@@ -741,26 +719,19 @@ def render_agent_chat(df):
                 if st.button(suggestion, key=f"suggest_{i}", use_container_width=True):
                     st.session_state._agent_pending = suggestion
                     st.rerun()
-
-    # Handle suggested question click
     pending = st.session_state.pop("_agent_pending", None)
-
-    # Chat input
     user_input = st.chat_input("Ask the agent about motor health, faults, or Dynatrace data...")
 
     question = pending or user_input
 
     if question:
-        # Add user message
         st.session_state.agent_messages.append({"role": "user", "content": question})
 
-        # Fetch Dynatrace + call Gemini
         with st.spinner("Agent fetching Dynatrace data and analysing..."):
             dt_data  = fetch_dynatrace_metrics()
             st.caption(f"🔍 Dynatrace fetch result: {dt_data}")
             response = agent_ask_gemini(question, dt_data, df)
 
-        # Add agent response
         st.session_state.agent_messages.append({"role": "assistant", "content": response})
         st.rerun()
 
@@ -776,8 +747,6 @@ def render_agent_chat(df):
 if __name__ == "__main__":
     main()
 
-# Call on every Streamlit rerun when running on Cloud Run (no local simulator present)
-# At the bottom of app.py, change this:
 _is_cloud = os.environ.get("K_SERVICE") is not None
 if _is_cloud:
     regenerate_live_data()
