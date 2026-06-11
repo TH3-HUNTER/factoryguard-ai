@@ -1,22 +1,15 @@
-"""
-FactoryGuard AI — Motor Simulator v4
-Corrected physics: voltage drop → overcurrent (real motor behavior)
-All logical constraints enforced
-"""
-
 import tkinter as tk
 import csv, time, math, random, threading, os
 from datetime import datetime
 
 CSV_FILE = os.path.join(os.path.dirname(__file__), "motor_data.csv")
 
-# Rated values — 400V 7.5kW 3-phase induction motor
 V_RATED   = 400.0
 I_RATED   = 15.2
 RPM_RATED = 1450
-P_RATED   = 7500   # watts
+P_RATED   = 7500   
 T_AMBIENT = 25
-T_RATED   = 75     # at full load
+T_RATED   = 75     
 PF        = 0.85
 
 class MotorSimulator:
@@ -54,7 +47,6 @@ class MotorSimulator:
         sf = tk.Frame(self.root, bg="#0f1117")
         sf.pack(fill="x", padx=30)
 
-        # Load slider
         tk.Label(sf, text="MOTOR LOAD  (% of rated mechanical load)",
                  bg="#0f1117", fg="#aaa", font=("Consolas",10)).grid(row=0,column=0,sticky="w")
         self.load_var = tk.DoubleVar(value=70)
@@ -62,7 +54,6 @@ class MotorSimulator:
                  length=720, bg="#0f1117", fg="#00d4ff", troughcolor="#1e2230",
                  highlightthickness=0, font=("Consolas",9)).grid(row=1,column=0,sticky="ew")
 
-        # RPM setpoint
         tk.Label(sf, text="RPM SETPOINT  (speed command to drive/VFD)",
                  bg="#0f1117", fg="#aaa", font=("Consolas",10)).grid(row=2,column=0,sticky="w",pady=(10,0))
         self.rpm_var = tk.DoubleVar(value=1450)
@@ -70,7 +61,6 @@ class MotorSimulator:
                  length=720, bg="#0f1117", fg="#ff6b35", troughcolor="#1e2230",
                  highlightthickness=0, font=("Consolas",9)).grid(row=3,column=0,sticky="ew")
 
-        # Voltage slider — full range to show fault effect clearly
         tk.Label(sf, text="SUPPLY VOLTAGE  (V) — move below 380V to trigger fault",
                  bg="#0f1117", fg="#aaa", font=("Consolas",10)).grid(row=4,column=0,sticky="w",pady=(10,0))
         self.volt_var = tk.DoubleVar(value=400)
@@ -80,7 +70,6 @@ class MotorSimulator:
 
         tk.Frame(self.root, bg="#1e2230", height=2).pack(fill="x", pady=8)
 
-        # Fault buttons
         tk.Label(self.root, text="FAULT INJECTION",
                  bg="#0f1117", fg="#ff6b35", font=("Consolas",11,"bold")).pack()
         ff = tk.Frame(self.root, bg="#0f1117")
@@ -98,7 +87,6 @@ class MotorSimulator:
 
         tk.Frame(self.root, bg="#1e2230", height=2).pack(fill="x", pady=8)
 
-        # Live readings
         tk.Label(self.root, text="LIVE SENSOR READINGS",
                  bg="#0f1117", fg="#00ff88", font=("Consolas",11,"bold")).pack()
         rf = tk.Frame(self.root, bg="#0f1117")
@@ -132,42 +120,30 @@ class MotorSimulator:
         rpm_sp  = self.rpm_var.get()               # commanded RPM
         voltage = self.volt_var.get()
 
-        # ── Fault modifier: voltage drop button forces -22%
         if self.fault_voltage_drop.get():
             voltage = voltage * 0.78 + random.uniform(-4, 4)
 
-        # ── RPM: slip increases with load; bearing fault reduces by 7%
         slip = 0.05 * load
         rpm  = rpm_sp * (1.0 - slip)
         if self.fault_bearing.get():
             rpm *= 0.93
         rpm = max(0, rpm + random.uniform(-6, 6))
 
-        # ── CURRENT: derived from power balance (real motor physics)
-        # P = √3 × V × I × cosφ  →  I = P / (√3 × V × cosφ)
-        # Shaft power scales with load fraction
         shaft_power = P_RATED * load * (rpm_sp / RPM_RATED) if rpm_sp > 0 else 0
-        # Electrical input power accounts for efficiency (~91%)
         elec_power  = shaft_power / 0.91
         denom = (math.sqrt(3) * max(voltage, 1) * PF)
         current = elec_power / denom
 
-        # Logical constraint: if voltage drops, current rises proportionally
-        # This is the KEY fix — low voltage = high current (real motor behavior)
+  
         voltage_ratio = V_RATED / max(voltage, 1)
-        current = current * voltage_ratio  # overcurrent from voltage drop
+        current = current * voltage_ratio  
 
         if self.fault_overcurrent.get():
             current *= 1.45
         current = max(0, current + random.uniform(-0.2, 0.2))
 
-        # ── LOGICAL CONSTRAINT: cap impossible states
-        # High RPM + very high current = driven load issue (not just load slider)
         if rpm > 1400 and current > 22:
-            current = 22 + random.uniform(0, 1)  # physical limit of motor
-
-        # ── TEMPERATURE: I²R losses are dominant
-        # T = T_ambient + k × I² (joule heating model)
+            current = 22 + random.uniform(0, 1)  
         k_thermal = (T_RATED - T_AMBIENT) / (I_RATED ** 2)
         temp = T_AMBIENT + k_thermal * (current ** 2)
         if self.fault_overtemp.get():
@@ -176,19 +152,14 @@ class MotorSimulator:
             temp += 12 + random.uniform(0, 4)
         temp = max(T_AMBIENT, temp + random.uniform(-0.4, 0.4))
 
-        # ── VIBRATION: mechanical + load component
+  
         vib = 0.5 + 1.8 * load
         if self.fault_bearing.get():
             vib += 8.5 + random.uniform(0, 2.5) + 1.8 * math.sin(time.time() * 3.2)
-        # Low voltage can cause slight vibration increase (unbalanced magnetic pull)
         if voltage < 360:
             vib += (360 - voltage) / 60
         vib = max(0.1, vib + random.uniform(-0.08, 0.08))
-
-        # ── POWER
         power = (math.sqrt(3) * voltage * current * PF) / 1000
-
-        # ── STATUS LOGIC (priority order)
         status = "NORMAL"
         if   self.fault_overcurrent.get() or current > 20: status = "CRITICAL_OVERCURRENT"
         elif self.fault_overtemp.get()    or temp > 102:   status = "CRITICAL_OVERTEMPERATURE"
