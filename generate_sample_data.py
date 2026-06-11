@@ -1,10 +1,3 @@
-"""
-Generates 120 rows of realistic motor data showing:
-- Normal operation for 60s
-- Gradual bearing fault developing over 30s  
-- Voltage drop fault for 30s
-This makes the hosted dashboard look like a real motor in action.
-"""
 import csv, random, math
 from datetime import datetime, timedelta
 
@@ -14,29 +7,24 @@ rows = []
 for i in range(120):
     load = 0.70 + random.uniform(-0.02, 0.02)
 
-    # Phase 1 (0-59s): Normal operation
     if i < 60:
         volt = 400 + random.uniform(-4, 4)
         bearing_vib = 0
         bearing_temp = 0
         status = "NORMAL"
 
-    # Phase 2 (60-89s): Bearing fault developing
     elif i < 90:
         volt = 400 + random.uniform(-4, 4)
         severity = (i - 60) / 30.0
         bearing_vib = severity * 8.5 + 2 * math.sin(i * 3.2) * severity
         bearing_temp = severity * 12
         status = "WARNING_BEARING_FAULT" if severity > 0.3 else "NORMAL"
-
-    # Phase 3 (90-119s): Voltage drop
     else:
         volt = 340 + random.uniform(-5, 5)
         bearing_vib = 0
         bearing_temp = 0
         status = "WARNING_LOW_VOLTAGE"
 
-    # Physics calculations
     curr = (7500 * load / 0.91) / (1.732 * volt * 0.85) * (400 / volt)
     curr += random.uniform(-0.2, 0.2)
     k    = 50 / (15.2 ** 2)
