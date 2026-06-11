@@ -1,26 +1,14 @@
-"""
-FactoryGuard AI — Motor Intelligence Agent v8
-Changes from v7:
-- Dynatrace metrics push every 30s (same cycle as AI analysis)
-- Dynatrace event push on CRITICAL/WARNING status
-- call_gemini() always returns a string (never None)
-- Model: gemini-3.5-flash
-- ANALYSIS_COOLDOWN raised to 60s (free tier safety)
-- 23 fault rules (7 new physics laws added)
-- rate_limit_penalty: after 429, delays next call by extra 120s
-"""
-
 import csv, time, os, json, urllib.request, urllib.error, math
 from datetime import datetime
 import threading
 
 CSV_FILE          = os.path.join(os.path.dirname(__file__), "..", "simulator", "motor_data.csv")
-GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY_HERE")
+GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "API_token_here")
 MODEL             = "gemini-3.1-flash-lite"
 GEMINI_URL        = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={GEMINI_API_KEY}"
 
 DT_URL            = os.environ.get("DT_URL",   "https://ywo70142.live.dynatrace.com")
-DT_TOKEN          = os.environ.get("DT_TOKEN", "YOUR_DT_TOKEN")
+DT_TOKEN          = os.environ.get("DT_TOKEN", "token_here")
 
 ANALYSIS_COOLDOWN = 30
 HISTORY_SIZE      = 20
@@ -28,7 +16,6 @@ API_TIMEOUT       = 30
 MAX_RETRIES       = 2
 MIN_ROWS          = 10
 
-# Motor nameplate
 V_RATED   = 400.0
 I_RATED   = 15.2
 RPM_RATED = 1450
@@ -56,8 +43,6 @@ def read_csv_tail(n=20):
     except FileNotFoundError:
         return []
 
-
-# ─── DYNATRACE ────────────────────────────────────────────────────────────────
 def push_metrics_to_dynatrace(row, fault_count, status):
     try:
         volt     = float(row.get("voltage_v", 0))
@@ -125,8 +110,6 @@ def push_event_to_dynatrace(fault_list, status, curr, temp, vib):
     except Exception as e:
         print(f"  {Y}[Dynatrace] Event failed: {e}{RST}")
 
-
-# ─── 23-RULE FAULT ENGINE ────────────────────────────────────────────────────
 def detect_faults(rows):
     if not rows or len(rows) < 3: return []
     faults = []
@@ -142,7 +125,6 @@ def detect_faults(rows):
     rpms   = [float(r["rpm"])            for r in rows]
     currs  = [float(r["current_a"])      for r in rows]
 
-    # ── Rules 1-15 (original) ────────────────────────────────────────────────
     if volt < 360:  faults.append(f"LOW VOLTAGE {volt:.0f}V (rated 400V)")
     if volt < 340:  faults.append(f"CRITICAL UNDERVOLTAGE {volt:.0f}V")
     if volt > 430:  faults.append(f"OVERVOLTAGE {volt:.0f}V")
@@ -167,8 +149,6 @@ def detect_faults(rows):
     if len(vibs)>=5 and vibs[-1]-vibs[0]>2:
         faults.append(f"VIBRATION RISING +{vibs[-1]-vibs[0]:.3f} mm/s in {len(vibs)}s")
 
-    # ── Rules 16-23 (new physics laws) ───────────────────────────────────────
-    # 16 — Slip ratio anomaly
     if rpm > 100 and curr > 2:
         actual_slip = (1500.0 - rpm) / 1500.0
         load_frac   = min(curr / I_RATED, 1.5)
@@ -178,13 +158,11 @@ def detect_faults(rows):
                 f"HIGH SLIP {actual_slip*100:.1f}% (expected {exp_slip*100:.1f}%) "
                 f"— rotor bar fault or mechanical drag"
             )
-    # 17 — Abnormal low slip with high current
         if actual_slip < 0.005 and curr > I_RATED * 0.8:
             faults.append(
                 f"ABNORMAL LOW SLIP {actual_slip*100:.2f}% with I={curr:.1f}A "
                 f"— VFD over-frequency or capacitor bank fault"
             )
-    # 18 — Power factor deviation
     if pow_kw > 0.1 and curr > 1.0:
         s_app    = math.sqrt(3) * volt * curr / 1000
         p_exp    = s_app * PF
@@ -194,7 +172,6 @@ def detect_faults(rows):
                 f"POWER FACTOR ANOMALY: {pow_kw:.2f}kW measured vs {p_exp:.2f}kW expected "
                 f"({dev*100:.0f}% deviation) — phase loss or capacitor fault"
             )
-    # 19 — Thermal resistance degradation
     if len(temps)>=8 and len(currs)>=8:
         dt_actual  = temps[-1] - temps[0]
         di_squared = currs[-1]**2 - currs[0]**2
@@ -203,19 +180,16 @@ def detect_faults(rows):
                 f"THERMAL ANOMALY: +{dt_actual:.1f}C without current increase "
                 f"— blocked ventilation or degraded cooling"
             )
-    # 20 — Stall detection
     if rpm < 30 and curr > 3.0:
         faults.append(
             f"POSSIBLE STALL: RPM={rpm:.0f} with I={curr:.1f}A "
             f"— locked rotor; stall current can reach {I_RATED*7:.0f}A"
         )
-    # 21 — Overvoltage core saturation
     if volt > 430 and curr > I_RATED * 0.85 and rpm > 1000:
         faults.append(
             f"OVERVOLTAGE SATURATION: V={volt:.0f}V I={curr:.1f}A at medium load "
             f"— magnetic core saturating, iron losses increasing"
         )
-    # 22 — Efficiency degradation
     if curr > 3.0 and rpm > 200 and pow_kw > 0.2:
         load_est    = min(curr / I_RATED, 1.5)
         speed_frac  = rpm / RPM_RATED
@@ -227,7 +201,6 @@ def detect_faults(rows):
                 f"EFFICIENCY DEGRADATION: {pow_kw:.2f}kW consumed vs {p_elec_exp:.2f}kW expected "
                 f"(est. efficiency {eff_act:.0f}% vs rated 91%) — winding or friction loss"
             )
-    # 23 — Phase imbalance proxy
     if volt > 370 and curr > I_RATED * 1.2 and rpm < RPM_RATED * 0.85 and rpm > 100:
         faults.append(
             f"POSSIBLE PHASE IMBALANCE: I={curr:.1f}A ({curr/I_RATED*100:.0f}% of rated) "
@@ -237,7 +210,7 @@ def detect_faults(rows):
     return faults
 
 
-# ─── PROMPT BUILDER ───────────────────────────────────────────────────────────
+# PROMPT BUILDER
 def build_messages(rows, faults):
     rpms  = [float(r["rpm"])            for r in rows]
     temps = [float(r["temperature_c"])  for r in rows]
@@ -281,7 +254,7 @@ def build_messages(rows, faults):
     return system_text, user_text
 
 
-# ─── GEMINI — always returns string ──────────────────────────────────────────
+# GEMINI 
 def call_gemini(system_text, user_text):
     global rate_limit_penalty
     for attempt in range(1, MAX_RETRIES + 1):
@@ -326,7 +299,7 @@ def call_gemini(system_text, user_text):
     )
 
 
-# ─── OUTPUT RENDERER ──────────────────────────────────────────────────────────
+# OUTPUT RENDERER 
 def print_analysis(text, faults, count):
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"\n\n{C}{'━'*68}{RST}")
@@ -359,7 +332,6 @@ def print_analysis(text, faults, count):
 
     print(f"\n{DIM}{'─'*68}")
     print(f"Next analysis in {ANALYSIS_COOLDOWN}s  |  Ctrl+C to stop{RST}\n")
-
 
 def print_live(row, countdown, n_faults, dt_ok):
     ts   = datetime.now().strftime("%H:%M:%S")
@@ -435,7 +407,6 @@ def main():
 
         faults = detect_faults(rows)
 
-        # Lightweight DT push every 30s outside of analysis thread
         dt_push_tick += 1
         if dt_push_tick >= 30:
             try:
