@@ -55,7 +55,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# SESSION STATE 
 for key, default in [
     ("last_analysis", ""),
     ("last_analysis_time", 0.0),
@@ -68,7 +67,6 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
-# DATA HELPERS
 def read_csv(n=HISTORY_ROWS):
     try:
         df = pd.read_csv(CSV_FILE)
@@ -234,7 +232,7 @@ Trends: RPM {tr(rpms)}, temperature {tr(temps)}, vibration {tr(vibs)}, current {
 Rule engine flagged:
 {ftext}
 
-Give a complete engineering diagnosis using these exact section headers:
+Give a complete engineering diagnosis using these exact section headers. IMPORTANT: write the content on the SAME LINE as each header, right after the colon. Never leave a section header with no text after it.
 
 STATUS: HEALTHY or WARNING or CRITICAL and one sentence why.
 
@@ -253,7 +251,7 @@ RISK ASSESSMENT: one sentence with time to failure, shutdown recommendation, saf
         payload = json.dumps({
             "system_instruction": {"parts": [{"text": system_text}]},
             "contents": [{"role": "user", "parts": [{"text": user_text}]}],
-            "generationConfig": {"temperature": 0.15, "maxOutputTokens": 500}
+            "generationConfig": {"temperature": 0.15, "maxOutputTokens": 1000}
         }).encode("utf-8")
         req = urllib.request.Request(
             GEMINI_URL, data=payload,
@@ -284,10 +282,20 @@ def render_diagnosis(text, status):
         if   low.startswith("status"):
             col = "#ff4444" if "CRITICAL" in su else ("#ffaa00" if "WARNING" in su else "#00ff88")
             html += f"<div class='section-header' style='color:{col};font-size:1.15rem'>{s}</div>"
-        elif low.startswith("observ"):    html += f"<div class='section-header'>OBSERVATIONS</div>"
-        elif low.startswith("root"):      html += f"<div class='section-header' style='color:#cc88ff'>ROOT CAUSE</div>"
-        elif low.startswith("recommend"): html += f"<div class='section-header' style='color:#ffcc44'>RECOMMENDED ACTIONS</div>"
-        elif low.startswith("risk"):      html += f"<div class='section-header' style='color:{sc}'>RISK ASSESSMENT</div>"
+        elif low.startswith("observ"):
+            _, _, rest = s.partition(":")
+            html += f"<div class='section-header'>OBSERVATIONS</div>"
+            if rest.strip(): html += f"<div style='margin:2px 0;color:#b8b8b8'>{rest.strip()}</div>"
+        elif low.startswith("root"):
+            _, _, rest = s.partition(":")
+            html += f"<div class='section-header' style='color:#cc88ff'>ROOT CAUSE</div>"
+            if rest.strip(): html += f"<div style='margin:2px 0;color:#b8b8b8'>{rest.strip()}</div>"
+        elif low.startswith("recommend"):
+            html += f"<div class='section-header' style='color:#ffcc44'>RECOMMENDED ACTIONS</div>"
+        elif low.startswith("risk"):
+            _, _, rest = s.partition(":")
+            html += f"<div class='section-header' style='color:{sc}'>RISK ASSESSMENT</div>"
+            if rest.strip(): html += f"<div style='margin:2px 0;color:#b8b8b8'>{rest.strip()}</div>"
         elif s.startswith("Action"):
             ac = "#ff4444" if "IMMEDIATE" in su else ("#ffaa00" if "THIS WEEK" in su else "#888")
             html += f"<div style='margin:5px 0 5px 16px;color:{ac}'>{s}</div>"
@@ -327,7 +335,6 @@ def regenerate_live_data():
     import random, csv
     from datetime import datetime, timedelta
 
-    # Read controls (with fallbacks for first run)
     load        = st.session_state.get("sim_load", 70) / 100.0
     volt_set    = st.session_state.get("sim_voltage", 400)
     rpm_set     = st.session_state.get("sim_rpm_set", 1450)
@@ -445,7 +452,6 @@ def main():
         <div style='margin-top:8px'>{ftags}</div>
     </div>""", unsafe_allow_html=True)
 
-    # 6 metric cards
     cols = st.columns(6)
     sensors = [
         ("RPM",       "rpm",            "",     "#00d4ff"),
@@ -484,7 +490,6 @@ def main():
         st.line_chart(df2, height=200)
 
     st.markdown("<br>", unsafe_allow_html=True)
-
 
     ai_col, spec_col = st.columns([3, 1])
 
@@ -655,7 +660,7 @@ def agent_ask_gemini(user_question: str, dt_data: dict, motor_df) -> str:
         payload = json.dumps({
             "system_instruction": {"parts": [{"text": system_text}]},
             "contents": [{"role": "user", "parts": [{"text": full_prompt}]}],
-            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 600}
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 900}
         }).encode("utf-8")
 
         req = urllib.request.Request(
@@ -684,11 +689,9 @@ def render_agent_chat(df):
         unsafe_allow_html=True
     )
 
-    # Init session state for chat
     if "agent_messages" not in st.session_state:
         st.session_state.agent_messages = []
 
-    # Display chat history
     for msg in st.session_state.agent_messages:
          role_color = "#00d4ff" if msg["role"] == "user" else "#00ff88"
          role_label = "You" if msg["role"] == "user" else "FactoryGuard Agent"
@@ -704,7 +707,6 @@ def render_agent_chat(df):
             unsafe_allow_html=True
         )
 
-    # Suggested questions (only shown when chat is empty)
     if not st.session_state.agent_messages:
         st.markdown("<div style='color:#555;font-size:0.8rem;margin-bottom:8px'>Try asking:</div>", unsafe_allow_html=True)
         suggestions = [
@@ -750,4 +752,3 @@ if __name__ == "__main__":
 _is_cloud = os.environ.get("K_SERVICE") is not None
 if _is_cloud:
     regenerate_live_data()
-
