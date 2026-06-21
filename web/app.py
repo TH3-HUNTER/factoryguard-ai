@@ -7,7 +7,6 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 
-#CONFIG 
 CSV_FILE       = os.path.join(os.path.dirname(__file__), "..", "simulator", "motor_data.csv")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "token_here")
 MODEL          = "gemini-3.1-flash-lite"
@@ -55,7 +54,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# SESSION STATE 
 for key, default in [
     ("last_analysis", ""),
     ("last_analysis_time", 0.0),
@@ -68,7 +66,6 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
-# DATA HELPERS
 def read_csv(n=HISTORY_ROWS):
     try:
         df = pd.read_csv(CSV_FILE)
@@ -111,15 +108,12 @@ def detect_faults(df):
         faults.append(f"TEMPERATURE RISING +{temps[-1]-temps[0]:.1f}C in {len(temps)}s")
     if len(vibs)>=5 and vibs[-1]-vibs[0]>2:
         faults.append(f"VIBRATION RISING +{vibs[-1]-vibs[0]:.3f} mm/s")
-    # Slip anomaly
     if rpm > 100 and curr > 2:
         actual_slip = (1500.0 - rpm) / 1500.0
         if actual_slip > 0.15:
             faults.append(f"HIGH SLIP {actual_slip*100:.1f}% — possible rotor bar fault or mechanical drag")
-    # Stall detection
     if rpm < 30 and curr > 3.0:
         faults.append(f"POSSIBLE STALL: RPM={rpm:.0f} with current={curr:.1f}A — locked rotor risk")
-    # Phase imbalance proxy
     if volt > 370 and curr > 15.2*1.2 and rpm < 1450*0.85 and rpm > 100:
         faults.append(f"POSSIBLE PHASE IMBALANCE: I={curr:.1f}A with V={volt:.0f}V at RPM={rpm:.0f}")
     return faults
@@ -234,7 +228,7 @@ Trends: RPM {tr(rpms)}, temperature {tr(temps)}, vibration {tr(vibs)}, current {
 Rule engine flagged:
 {ftext}
 
-Give a complete engineering diagnosis using these exact section headers:
+Give a complete engineering diagnosis using these exact section headers. IMPORTANT: write the content on the SAME LINE as each header, right after the colon. Never leave a section header with no text after it.
 
 STATUS: HEALTHY or WARNING or CRITICAL and one sentence why.
 
@@ -253,7 +247,7 @@ RISK ASSESSMENT: one sentence with time to failure, shutdown recommendation, saf
         payload = json.dumps({
             "system_instruction": {"parts": [{"text": system_text}]},
             "contents": [{"role": "user", "parts": [{"text": user_text}]}],
-            "generationConfig": {"temperature": 0.15, "maxOutputTokens": 500}
+            "generationConfig": {"temperature": 0.15, "maxOutputTokens": 1000}
         }).encode("utf-8")
         req = urllib.request.Request(
             GEMINI_URL, data=payload,
@@ -269,7 +263,7 @@ RISK ASSESSMENT: one sentence with time to failure, shutdown recommendation, saf
     except Exception as e:
         return f"Connection error: {e}"
 
-# AI DIAGNOSIS RENDERER
+# AI DIAGNOSIS RENDERER 
 def render_diagnosis(text, status):
     if not text:
         return "<div class='ai-box' style='color:#555;text-align:center;padding-top:60px'>Waiting for first analysis — this takes up to 30 seconds after the simulator starts.</div>"
@@ -284,10 +278,20 @@ def render_diagnosis(text, status):
         if   low.startswith("status"):
             col = "#ff4444" if "CRITICAL" in su else ("#ffaa00" if "WARNING" in su else "#00ff88")
             html += f"<div class='section-header' style='color:{col};font-size:1.15rem'>{s}</div>"
-        elif low.startswith("observ"):    html += f"<div class='section-header'>OBSERVATIONS</div>"
-        elif low.startswith("root"):      html += f"<div class='section-header' style='color:#cc88ff'>ROOT CAUSE</div>"
-        elif low.startswith("recommend"): html += f"<div class='section-header' style='color:#ffcc44'>RECOMMENDED ACTIONS</div>"
-        elif low.startswith("risk"):      html += f"<div class='section-header' style='color:{sc}'>RISK ASSESSMENT</div>"
+        elif low.startswith("observ"):
+            header, _, rest = s.partition(":")
+            html += f"<div class='section-header'>OBSERVATIONS</div>"
+            if rest.strip(): html += f"<div style='margin:2px 0;color:#b8b8b8'>{rest.strip()}</div>"
+        elif low.startswith("root"):
+            header, _, rest = s.partition(":")
+            html += f"<div class='section-header' style='color:#cc88ff'>ROOT CAUSE</div>"
+            if rest.strip(): html += f"<div style='margin:2px 0;color:#b8b8b8'>{rest.strip()}</div>"
+        elif low.startswith("recommend"):
+            html += f"<div class='section-header' style='color:#ffcc44'>RECOMMENDED ACTIONS</div>"
+        elif low.startswith("risk"):
+            header, _, rest = s.partition(":")
+            html += f"<div class='section-header' style='color:{sc}'>RISK ASSESSMENT</div>"
+            if rest.strip(): html += f"<div style='margin:2px 0;color:#b8b8b8'>{rest.strip()}</div>"
         elif s.startswith("Action"):
             ac = "#ff4444" if "IMMEDIATE" in su else ("#ffaa00" if "THIS WEEK" in su else "#888")
             html += f"<div style='margin:5px 0 5px 16px;color:{ac}'>{s}</div>"
@@ -296,111 +300,8 @@ def render_diagnosis(text, status):
     html += "</div>"
     return html
 
-def render_simulator_controls():
-    """Online motor simulator controls in the sidebar."""
-    st.sidebar.markdown("## ⚙ Motor Simulator")
-    st.sidebar.markdown("<div style='color:#555;font-size:0.78rem'>Control the motor live</div>", unsafe_allow_html=True)
-
-    # Init defaults
-    for k, v in [
-        ("sim_load", 70), ("sim_voltage", 400), ("sim_rpm_set", 1450),
-        ("sim_bearing", False), ("sim_overtemp", False),
-        ("sim_overcurrent", False),
-    ]:
-        if k not in st.session_state:
-            st.session_state[k] = v
-
-    st.session_state.sim_load       = st.sidebar.slider("Load (%)", 0, 100, st.session_state.sim_load)
-    st.session_state.sim_voltage    = st.sidebar.slider("Supply Voltage (V)", 280, 440, st.session_state.sim_voltage)
-    st.session_state.sim_rpm_set    = st.sidebar.slider("RPM Setpoint", 0, 1500, st.session_state.sim_rpm_set)
-
-    st.sidebar.markdown("**Fault Injection**")
-    st.session_state.sim_bearing    = st.sidebar.checkbox("🔴 Bearing Fault",   st.session_state.sim_bearing)
-    st.session_state.sim_overtemp   = st.sidebar.checkbox("🔴 Overtemperature", st.session_state.sim_overtemp)
-    st.session_state.sim_overcurrent= st.sidebar.checkbox("🔴 Overcurrent",     st.session_state.sim_overcurrent)
-    
-
-import math as _math
-
-def regenerate_live_data():
-    """Generate live CSV data from sidebar simulator controls."""
-    import random, csv
-    from datetime import datetime, timedelta
-
-    # Read controls (with fallbacks for first run)
-    load        = st.session_state.get("sim_load", 70) / 100.0
-    volt_set    = st.session_state.get("sim_voltage", 400)
-    rpm_set     = st.session_state.get("sim_rpm_set", 1450)
-    bearing     = st.session_state.get("sim_bearing", False)
-    overtemp    = st.session_state.get("sim_overtemp", False)
-    overcurrent = st.session_state.get("sim_overcurrent", False)
-
-    t    = datetime.now() - timedelta(seconds=60)
-    rows = []
-
-    for i in range(60):
-        volt = volt_set + random.uniform(-3, 3)
-
-        # Real motor physics
-        curr = (7500 * load / 0.91) / (1.732 * volt * 0.85) * (400 / volt)
-        curr += random.uniform(-0.1, 0.1)
-
-        rpm  = rpm_set * (1 - 0.05 * load)
-        temp = 25 + (50 / 15.2**2) * curr**2
-
-        vib  = 0.5 + 1.8 * load
-        if volt < 360:
-            vib += (360 - volt) / 60
-
-        # Fault injections
-        if bearing:
-            import math
-            rpm  *= 0.93
-            vib  += 8.5 + math.sin(i * 3.2)
-            temp += 12
-
-        if overtemp:
-            temp += 35
-
-        if overcurrent:
-            curr *= 1.45
-
-        # Add noise
-        volt += random.uniform(-2, 2)
-        curr += random.uniform(-0.1, 0.1)
-        temp += random.uniform(-0.3, 0.3)
-        vib   = max(0, vib + random.uniform(-0.05, 0.05))
-        rpm  += random.uniform(-5, 5)
-
-        power_kw = round((1.732 * volt * curr * 0.85) / 1000, 3)
-
-        # Status
-        status = "NORMAL"
-        if curr > 22 or temp > 100: status = "CRITICAL_OVERCURRENT" if curr > 22 else "CRITICAL_OVERTEMPERATURE"
-        elif bearing:               status = "WARNING_BEARING_FAULT"
-        elif volt < 360:            status = "WARNING_LOW_VOLTAGE"
-        elif temp > 80:             status = "WARNING_HIGH_TEMP"
-
-        rows.append([
-            t.strftime('%Y-%m-%d %H:%M:%S'),
-            round(rpm, 1), round(temp, 1), round(vib, 3),
-            round(curr, 2), round(volt, 1), power_kw, status
-        ])
-        t += timedelta(seconds=1)
-
-    os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
-    with open(CSV_FILE, 'w', newline='') as f:
-        w = csv.writer(f)
-        w.writerow(['timestamp','rpm','temperature_c','vibration_mm_s',
-                    'current_a','voltage_v','power_kw','status'])
-        w.writerows(rows)
-
-
-    
 # MAIN 
 def main():
-    render_simulator_controls()
-    regenerate_live_data()
     st.markdown("# ⚙ FactoryGuard AI")
     st.markdown("`3-Phase 400V Industrial Motor  |  Real-Time Predictive Maintenance  |  Gemini 3.5 Flash  +  Dynatrace`")
     st.markdown("---")
@@ -426,7 +327,6 @@ def main():
     sclass = "status-critical" if "CRITICAL" in status else ("status-warning" if "WARNING" in status else "status-healthy")
     ftags  = "".join(f"<span class='fault-tag'>{f}</span>" for f in faults) or "<span style='color:#00ff88'>All parameters normal</span>"
 
-    # Push metrics to Dynatrace
     now = time.time()
     if now - st.session_state.dt_last_push >= 10:
         dt_result = push_metrics_to_dynatrace(volt, curr, temp, vib, rpm, power_kw, len(faults), status)
@@ -437,7 +337,6 @@ def main():
         if dt_result == 202:
             st.session_state.dt_push_count += 1
 
-    # Status banner
     st.markdown(f"""
     <div class='{sclass}'>
         <span style='color:{sc};font-size:1.4rem;font-weight:700'>● {status}</span>
@@ -445,7 +344,6 @@ def main():
         <div style='margin-top:8px'>{ftags}</div>
     </div>""", unsafe_allow_html=True)
 
-    # 6 metric cards
     cols = st.columns(6)
     sensors = [
         ("RPM",       "rpm",            "",     "#00d4ff"),
@@ -467,7 +365,6 @@ def main():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Charts
     st.markdown("### 📈 Sensor Trends")
     c1, c2 = st.columns(2)
     with c1:
@@ -484,7 +381,6 @@ def main():
         st.line_chart(df2, height=200)
 
     st.markdown("<br>", unsafe_allow_html=True)
-
 
     ai_col, spec_col = st.columns([3, 1])
 
@@ -518,7 +414,6 @@ def main():
         st.markdown(render_diagnosis(st.session_state.last_analysis, status), unsafe_allow_html=True)
 
     with spec_col:
-
         dt_status = st.session_state.dt_last_status or "Pending..."
         dt_count  = st.session_state.dt_push_count
         st.markdown(f"""
@@ -554,200 +449,57 @@ def main():
 - Voltage min: **360V**
         """)
 
-    # Auto-refresh
-    render_agent_chat(df)
     time.sleep(REFRESH_RATE)
     st.rerun()
-
-
-def fetch_dynatrace_metrics():
-    """Fetch the latest motor metrics from Dynatrace Metrics API v2."""
-    metrics_to_fetch = [
-        "factoryguard.motor.voltage_v",
-        "factoryguard.motor.current_a",
-        "factoryguard.motor.temperature_c",
-        "factoryguard.motor.vibration_mm_s",
-        "factoryguard.motor.rpm",
-        "factoryguard.motor.power_kw",
-        "factoryguard.motor.fault_count",
-        "factoryguard.motor.severity",
-    ]
-    selector = ",".join(metrics_to_fetch)
-    url = f"{DT_URL}/api/v2/metrics/query?metricSelector={selector}&resolution=1m&from=now-5m"
-
-    try:
-        req = urllib.request.Request(
-            url,
-            headers={"Authorization": f"Api-Token {DT_PLATFORM_TOKEN or DT_TOKEN}"}
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-
-        results = {}
-        for item in data.get("resolution", {}) and data.get("result", []):
-            metric_id = item.get("metricId", "")
-            series    = item.get("data", [])
-            if series:
-                values = [v for v in series[0].get("values", []) if v is not None]
-                if values:
-                    short_name = metric_id.split(".")[-1]  # e.g. voltage_v
-                    results[short_name] = round(values[-1], 3)
-
-        return results if results else None
-
-    except Exception as e:
-        return {"error": str(e)}
-
-
-def agent_ask_gemini(user_question: str, dt_data: dict, motor_df) -> str:
-    """Send user question + Dynatrace context + CSV context to Gemini."""
-
-    if dt_data and "error" not in dt_data:
-        dt_context = "LIVE DATA FROM DYNATRACE (last 5 minutes):\n"
-        label_map = {
-            "voltage_v": "Voltage",
-            "current_a": "Current",
-            "temperature_c": "Temperature",
-            "vibration_mm_s": "Vibration",
-            "rpm": "RPM",
-            "power_kw": "Power",
-            "fault_count": "Active Faults",
-            "severity": "Severity Level (0=OK 1=WARN 2=CRIT)",
-        }
-        for k, v in dt_data.items():
-            label = label_map.get(k, k)
-            dt_context += f"  {label}: {v}\n"
-    elif dt_data and "error" in dt_data:
-        dt_context = f"Dynatrace query failed: {dt_data['error']}. Using local CSV data instead.\n"
-    else:
-        dt_context = "Dynatrace returned no data. Using local CSV data.\n"
-
-    csv_context = ""
-    if motor_df is not None and not motor_df.empty:
-        last = motor_df.iloc[-1]
-        csv_context = (
-            f"\nLOCAL SENSOR DATA (latest reading):\n"
-            f"  Voltage: {last.get('voltage_v','N/A')} V\n"
-            f"  Current: {last.get('current_a','N/A')} A\n"
-            f"  Temperature: {last.get('temperature_c','N/A')} C\n"
-            f"  Vibration: {last.get('vibration_mm_s','N/A')} mm/s\n"
-            f"  RPM: {last.get('rpm','N/A')}\n"
-            f"  Status: {last.get('status','N/A')}\n"
-        )
-
-    system_text = (
-        "You are FactoryGuard AI, a senior industrial motor diagnostic agent. "
-        "You monitor a 400V / 7.5kW / 1450 RPM 3-phase induction motor in a factory. "
-        "You have access to real-time data from Dynatrace monitoring and local sensors. "
-        "Normal ranges: voltage 380-420V, current below 15.2A, temperature below 80C, vibration below 4.5 mm/s. "
-        "Always answer as a professional maintenance engineer: cite the exact sensor values, "
-        "explain root causes using motor physics, and give specific recommended actions. "
-        "Be concise and direct. Use plain text, no markdown symbols."
-    )
-
-    full_prompt = (
-        f"{dt_context}"
-        f"{csv_context}\n"
-        f"Engineer question: {user_question}"
-    )
-
-    try:
-        payload = json.dumps({
-            "system_instruction": {"parts": [{"text": system_text}]},
-            "contents": [{"role": "user", "parts": [{"text": full_prompt}]}],
-            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 600}
-        }).encode("utf-8")
-
-        req = urllib.request.Request(
-            GEMINI_URL, data=payload,
-            headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=45) as resp:
-            data = json.loads(resp.read().decode())
-            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        if e.code == 429:
-            return "Rate limit reached — wait 60 seconds and try again."
-        return f"Gemini error {e.code}: {body[:200]}"
-    except Exception as e:
-        return f"Agent error: {e}"
-
-def render_agent_chat(df):
-    st.markdown("---")
-    st.markdown("## 🤖 FactoryGuard Agent")
-    st.markdown(
-        "<span style='color:#555;font-size:0.82rem'>"
-        "Agent fetches live data from Dynatrace · powered by Gemini AI"
-        "</span>",
-        unsafe_allow_html=True
-    )
-
-    # Init session state for chat
-    if "agent_messages" not in st.session_state:
-        st.session_state.agent_messages = []
-
-    # Display chat history
-    for msg in st.session_state.agent_messages:
-         role_color = "#00d4ff" if msg["role"] == "user" else "#00ff88"
-         role_label = "You" if msg["role"] == "user" else "FactoryGuard Agent"
-         bg_color = "#1a1f35" if msg["role"] == "user" else "#0d2b1a"
-         st.markdown(
-            f"<div style='margin:8px 0;padding:12px 16px;"
-            f"background:{bg_color};"
-            f"border-radius:10px;border-left:3px solid {role_color}'>"
-            f"<div style='color:{role_color};font-size:0.75rem;font-weight:700;"
-            f"margin-bottom:6px'>{role_label}</div>"
-            f"<div style='color:#ccc;font-size:0.9rem;white-space:pre-wrap'>{msg['content']}</div>"
-            f"</div>",
-            unsafe_allow_html=True
-        )
-
-    # Suggested questions (only shown when chat is empty)
-    if not st.session_state.agent_messages:
-        st.markdown("<div style='color:#555;font-size:0.8rem;margin-bottom:8px'>Try asking:</div>", unsafe_allow_html=True)
-        suggestions = [
-            "What is the current motor status from Dynatrace?",
-            "Is the temperature dangerous right now?",
-            "Why is the current high?",
-            "How many faults are active?",
-        ]
-        cols = st.columns(len(suggestions))
-        for i, suggestion in enumerate(suggestions):
-            with cols[i]:
-                if st.button(suggestion, key=f"suggest_{i}", use_container_width=True):
-                    st.session_state._agent_pending = suggestion
-                    st.rerun()
-    pending = st.session_state.pop("_agent_pending", None)
-    user_input = st.chat_input("Ask the agent about motor health, faults, or Dynatrace data...")
-
-    question = pending or user_input
-
-    if question:
-        st.session_state.agent_messages.append({"role": "user", "content": question})
-
-        with st.spinner("Agent fetching Dynatrace data and analysing..."):
-            dt_data  = fetch_dynatrace_metrics()
-            st.caption(f"🔍 Dynatrace fetch result: {dt_data}")
-            response = agent_ask_gemini(question, dt_data, df)
-
-        st.session_state.agent_messages.append({"role": "assistant", "content": response})
-        st.rerun()
-
-    # Clear button
-    if st.session_state.agent_messages:
-        if st.button("🗑 Clear chat", key="clear_agent_chat"):
-            st.session_state.agent_messages = []
-            st.session_state.pop("_agent_pending", None)
-            st.rerun()
-
-
 
 if __name__ == "__main__":
     main()
 
-_is_cloud = os.environ.get("K_SERVICE") is not None
+import math as _math
+
+def regenerate_live_data():
+    """Generate fresh 120 rows ending at NOW so values change on every refresh."""
+    import random, csv
+    from datetime import datetime, timedelta
+    t = datetime.now() - timedelta(seconds=120)
+    rows = []
+    seed = int(datetime.now().timestamp()) // 30  # changes every 30s
+    random.seed(seed)
+
+    for i in range(120):
+        load = 0.70 + random.uniform(-0.03, 0.03)
+        if i < 60:
+            volt = 400 + random.uniform(-5, 5)
+            bvib, btemp, status = 0, 0, "NORMAL"
+        elif i < 90:
+            volt = 400 + random.uniform(-5, 5)
+            sev = (i - 60) / 30.0
+            bvib = sev * 8.5 + 2 * _math.sin(i * 3.2) * sev
+            btemp = sev * 12
+            status = "WARNING_BEARING_FAULT" if sev > 0.3 else "NORMAL"
+        else:
+            volt = 340 + random.uniform(-6, 6)
+            bvib, btemp = 0, 0
+            status = "WARNING_LOW_VOLTAGE"
+
+        curr = (7500 * load / 0.91) / (1.732 * volt * 0.85) * (400 / volt) + random.uniform(-0.2, 0.2)
+        temp = 25 + (50 / 15.2**2) * curr**2 + btemp + random.uniform(-0.5, 0.5)
+        rpm  = 1450 * (1 - 0.05 * load) * (0.93 if bvib > 3 else 1.0) + random.uniform(-8, 8)
+        vib  = max(0, 0.5 + 1.8 * load + bvib + random.uniform(-0.05, 0.05))
+        pw   = round((1.732 * volt * curr * 0.85) / 1000, 3)
+        if temp > 100: status = "CRITICAL_OVERTEMPERATURE"
+        elif curr > 20: status = "CRITICAL_OVERCURRENT"
+        rows.append([t.strftime('%Y-%m-%d %H:%M:%S'), round(rpm,1), round(temp,1),
+                     round(vib,3), round(curr,2), round(volt,1), pw, status])
+        t += timedelta(seconds=1)
+
+    os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
+    with open(CSV_FILE, 'w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(['timestamp','rpm','temperature_c','vibration_mm_s','current_a','voltage_v','power_kw','status'])
+        w.writerows(rows)
+
+_is_cloud = os.environ.get("K_SERVICE") is not None   
 if _is_cloud:
     regenerate_live_data()
 
