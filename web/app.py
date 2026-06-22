@@ -409,7 +409,7 @@ def main():
     render_simulator_controls()
     regenerate_live_data()
     st.markdown("# ⚙ FactoryGuard AI")
-    st.markdown("`3-Phase 400V Industrial Motor  |  Real-Time Predictive Maintenance  |  Gemini 3.5 Flash  +  Dynatrace`")
+    st.markdown("`3-Phase 400V Industrial Motor  |  Real-Time Predictive Maintenance  |  Gemini 3.1 flash lite  +  Dynatrace`")
     st.markdown("---")
 
     df = read_csv()
@@ -513,7 +513,7 @@ def main():
 
         if should_run:
             st.session_state.ai_running = True
-            with st.spinner("Gemini 3.5 Flash is analysing the motor data..."):
+            with st.spinner("Gemini 3.1 flash lite is analysing the motor data..."):
                 result = call_gemini(df, faults)
             st.session_state.last_analysis      = result
             st.session_state.last_analysis_time = time.time()
